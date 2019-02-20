@@ -15,6 +15,7 @@ from mne.beamformer import (make_lcmv, apply_lcmv, apply_lcmv_epochs,
                             apply_lcmv_raw, tf_lcmv, Beamformer,
                             read_beamformer)
 from mne.beamformer._lcmv import _lcmv_source_power
+from mne.io.compensator import set_current_comp
 from mne.minimum_norm import make_inverse_operator, apply_inverse
 from mne.simulation import simulate_evoked
 from mne.utils import run_tests_if_main, object_diff, requires_h5py
@@ -661,6 +662,33 @@ def test_lcmv_ctf_comp():
                                     mne.make_sphere_model())
     filters = make_lcmv(evoked.info, fwd, data_cov)
     assert 'weights' in filters
+
+    # test whether different compensations throw error
+    info_comp = evoked.info.copy()
+    set_current_comp(info_comp, 1)
+    with pytest.raises(ValueError,
+                       match='do not have same compensation applied'):
+        make_lcmv(info_comp, fwd, data_cov)
+
+
+@testing.requires_testing_data
+@pytest.mark.parametrize('proj', [False, True])
+def test_lcmv_reg_proj(proj):
+    """Test LCMV with and without proj."""
+    raw = mne.io.read_raw_fif(fname_raw, preload=True)
+    events = mne.find_events(raw)
+    raw.pick_types()
+    assert len(raw.ch_names) == 305
+    epochs = mne.Epochs(raw, events, None, preload=True, proj=proj)
+    with pytest.warns(RuntimeWarning, match='Too few samples'):
+        noise_cov = mne.compute_covariance(epochs, tmax=0)
+        data_cov = mne.compute_covariance(epochs, tmin=0.04, tmax=0.15)
+    forward = mne.read_forward_solution(fname_fwd)
+    filters = make_lcmv(epochs.info, forward, data_cov, reg=0.05,
+                        noise_cov=noise_cov, pick_ori='max-power',
+                        weight_norm='nai', rank=None, verbose=True)
+    want_rank = 302  # 305 good channels - 3 MEG projs
+    assert filters['rank'] == want_rank
 
 
 run_tests_if_main()
