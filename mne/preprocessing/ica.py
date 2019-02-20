@@ -209,11 +209,11 @@ class ICA(ContainsMixin):
         If fit, the whitened matrix to go from PCA space to ICA space.
         Used, in combination with the `pca_components_`, by the methods
         :meth:`ICA.get_sources` and :meth:`ICA.apply` to unmix the observed data.
-    exclude : list
-        List of sources indices to exclude when re-mixing the data in the
-        :meth:`ICA.apply` method, i.e. artifactual ICA components.
+    exclude : array_like of int.
+        List or np.array of sources indices to exclude when re-mixing the data
+        in the :meth:`ICA.apply` method, i.e. artifactual ICA components.
         The components identified manually and by the various automatic
-        artifact detection methods should be (manually) appended to this list
+        artifact detection methods should be (manually) appended
         (e.g. ``ica.exclude.extend(eog_inds)``).
         (There is also an `exclude` parameter in the :meth:`ICA.apply` method.)
         To scrap all marked components, set this attribute to an empty list.
@@ -247,7 +247,6 @@ class ICA(ContainsMixin):
               especially during preprocessing [5]_. (But see also [6]_ for a
               possibly confounding effect of the different whitening/sphering
               methods used in this paper (ZCA vs. PCA).)
-              sphering is more commonly called ZCA
               On the other hand, for rank-deficient data such as EEG data after
               average reference or interpolation, it is  recommended to reduce
               the dimensionality (by 1 for  average reference and 1 for each
@@ -918,7 +917,7 @@ class ICA(ContainsMixin):
             # re-append additionally picked ch_info
             ch_info += [k for k in container.info['chs'] if k['ch_name'] in
                         add_channels]
-        info['bads'] = [ch_names[k] for k in self.exclude]
+        info['bads'] = [ch_names[k] for k in list(self.exclude)]
         info['projs'] = []  # make sure projections are removed.
         info._update_redundant()
         info._check_consistency()
@@ -1383,7 +1382,8 @@ class ICA(ContainsMixin):
         if exclude is None:
             return list(set(self.exclude))
         else:
-            return list(set(self.exclude + exclude))
+            return list(set(list(self.exclude) + list(exclude)))
+            # Allow both self.exclude and exclude to be array-like.
 
     def _apply_raw(self, raw, include, exclude, n_pca_components, start, stop):
         """Aux method."""
@@ -1467,10 +1467,9 @@ class ICA(ContainsMixin):
 
     def _pick_sources(self, data, include, exclude):
         """Aux function."""
-        if exclude is None:
-            exclude = self.exclude
-        else:
-            exclude = list(set(self.exclude + list(exclude)))
+        # We assume
+        # exclude = self._check_exclude(exclude)
+        # has already been called.
 
         _n_pca_comp = self._check_n_pca_components(self.n_pca_components)
 
@@ -2024,7 +2023,7 @@ def _write_ica(fid, ica):
 
     #   Write bad components
 
-    write_int(fid, FIFF.FIFF_MNE_ICA_BADS, ica.exclude)
+    write_int(fid, FIFF.FIFF_MNE_ICA_BADS, list(ica.exclude))
 
     # Done!
     end_block(fid, FIFF.FIFFB_MNE_ICA)
@@ -2191,6 +2190,7 @@ def _detect_artifacts(ica, raw, start_find, stop_find, ecg_ch, ecg_score_func,
 
         case = (len(found), _pl(found), node.name)
         logger.info('    found %s artifact%s by %s' % case)
+        ica.exclude = list(ica.exclude)
         ica.exclude += found
 
     logger.info('Artifact indices found:\n    ' + str(ica.exclude).strip('[]'))
@@ -2374,7 +2374,8 @@ def _band_pass_filter(inst, sources, target, l_freq, h_freq, verbose=None):
         kw = dict(phase='zero-double', filter_length='10s', fir_window='hann',
                   l_trans_bandwidth=0.5, h_trans_bandwidth=0.5,
                   fir_design='firwin2')
-        sources = filter_data(sources, inst.info['sfreq'], l_freq, h_freq, **kw)
+        sources = filter_data(sources, inst.info['sfreq'], l_freq, h_freq,
+                              **kw)
         logger.info('... filtering target')
         target = filter_data(target, inst.info['sfreq'], l_freq, h_freq, **kw)
     elif l_freq is not None or h_freq is not None:
