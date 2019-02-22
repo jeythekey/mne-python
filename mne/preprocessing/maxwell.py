@@ -278,7 +278,7 @@ def maxwell_filter(raw, origin='auto', int_order=8, ext_order=3,
     # triage inputs ASAP to avoid late-thrown errors
     if not isinstance(raw, BaseRaw):
         raise TypeError('raw must be Raw, not %s' % type(raw))
-    _check_usable(raw)
+    # _check_usable(raw)
     _check_regularize(regularize)
     st_correlation = float(st_correlation)
     if st_correlation <= 0. or st_correlation > 1.:
